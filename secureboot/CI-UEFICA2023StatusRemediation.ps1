@@ -96,6 +96,25 @@ function Start-SecureBootUpdateTask {
     return $false
 }
 
+function Suspend-BitLockerForReboots {
+    param([int]$RebootCount = 3)
+    try {
+        $drives = Get-BitLockerVolume -ErrorAction Stop | Where-Object { $_.LockStatus -eq 'On' }
+        if ($null -ne $drives) {
+            foreach ($drive in $drives) {
+                Suspend-BitLocker -MountPoint $drive.MountPoint -RebootCount $RebootCount -ErrorAction Stop
+                Write-Result ("BitLocker suspended on {0} for {1} reboots." -f $drive.MountPoint, $RebootCount)
+            }
+        }
+        else {
+            Write-Result "No BitLocker-enabled drives found or BitLocker is not active."
+        }
+    }
+    catch {
+        Write-Result ("Warning: Could not suspend BitLocker: {0}" -f $_.Exception.Message)
+    }
+}
+
 # -----------------------------
 # Main logic
 # -----------------------------
@@ -128,6 +147,9 @@ try {
     # ---------------------------------------------------------
     # Main remediation steps
     # ---------------------------------------------------------
+
+    # 0) Suspend BitLocker for up to three reboots
+    Suspend-BitLocker -MountPoint "C:" -RebootCount 3
 
     # 1) Opt‑in to Microsoft-managed rollout assist. [2](https://support.microsoft.com/en-us/topic/registry-key-updates-for-secure-boot-windows-devices-with-it-managed-updates-a7be69c9-4634-42e1-9ca1-df06f43f360d)
     Set-ItemProperty -Path $SecureBootRoot -Name "MicrosoftUpdateManagedOptIn" -Type DWord -Value 1 -ErrorAction Stop
